@@ -12,6 +12,7 @@ clock. The entry is CANDIDATES[SELECTED], written to
 trailing newline, so the file is exactly the line, byte for byte.
 """
 
+import hashlib
 import os
 
 CANDIDATES = [
@@ -51,11 +52,25 @@ def main() -> None:
     with open(out_path, "w", encoding="utf-8") as f:
         f.write(entry)
     # Read-back verification: the file on disk must be exactly the
-    # selected line, byte for byte, or the run fails loudly.
+    # selected line, byte for byte, or the run fails loudly. This is
+    # an explicit comparison (not an assert), so it still runs under
+    # `python -O`.
     with open(out_path, "r", encoding="utf-8") as f:
         written = f.read()
     if written != entry:
         raise SystemExit("read-back mismatch: entry.txt != selected line")
+    # Second verification layer: compare SHA-256 digests of the raw
+    # bytes on disk against the digest of the source text encoded as
+    # UTF-8. This catches byte-level differences (encoding, trailing
+    # newline, truncation) that a text comparison alone could mask.
+    expected_digest = hashlib.sha256(entry.encode("utf-8")).hexdigest()
+    with open(out_path, "rb") as f:
+        on_disk_digest = hashlib.sha256(f.read()).hexdigest()
+    if on_disk_digest != expected_digest:
+        raise SystemExit(
+            "digest mismatch: entry.txt sha256 "
+            f"{on_disk_digest} != expected {expected_digest}"
+        )
 
 
 if __name__ == "__main__":
